@@ -34,13 +34,15 @@ public class Tests
     public void CircularCloudLayout_ShouldCorrectlyPlace_SecondRectangle()
     {
         var layouter = new CircularCloudLayouter(_center, _pointGenerator);
-        var expected = new Rectangle(_center + _size, _size);
+        float GetDistance(Point p) => (float)Math.Sqrt(Math.Pow(p.X - _center.X, 2) + Math.Pow(p.Y - _center.Y, 2));
+        Point GetCenter(Rectangle rect) =>
+            new Point(rect.Left + rect.Width / 2, rect.Top + rect.Height / 2);
         
         var firstRect = layouter.PutNextRectangle(_size);
         var result = layouter.PutNextRectangle(_size);
         
-        firstRect.IntersectsWith(result).Should().BeTrue();
-        expected.Should().BeEquivalentTo(result);
+        firstRect.IntersectsWith(result).Should().BeFalse();
+        GetDistance(GetCenter(result)).Should().BeGreaterThan(GetDistance(GetCenter(firstRect)));
     }
     
     [Test]
