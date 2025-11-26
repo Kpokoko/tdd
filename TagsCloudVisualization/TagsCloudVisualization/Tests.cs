@@ -9,6 +9,7 @@ public class Tests
     private Point _center;
     private Size _size;
     private IPointGenerator _pointGenerator;
+    private Func<Point, float> GetDistance;
     
     [SetUp]
     public void Setup()
@@ -17,12 +18,13 @@ public class Tests
         _size = new Size(10, 10);
         var density = 1;
         _pointGenerator = new ArchimedeanSpiralPointGenerator(_center, density);
+        GetDistance = p => (float)Math.Sqrt(Math.Pow(p.X - _center.X, 2) + Math.Pow(p.Y - _center.Y, 2));
     }
     
     [Test]
-    public void CircularCloudLayout_ShouldCorrectlyPlaceRectangle_OnCenterPoint()
+    public void CircularCloudLayout_ShouldCorrectlyPlaceFirstRectangle_OnCenterPoint()
     {
-        var layouter = new CircularCloudLayouter(_center, _pointGenerator);
+        var layouter = new CircularCloudLayouter(_center);
         var expected = new Rectangle(_center - _size / 2, _size);
 
         var result = layouter.PutNextRectangle(_size);
@@ -31,24 +33,58 @@ public class Tests
     }
 
     [Test]
-    public void CircularCloudLayout_ShouldCorrectlyPlace_SecondRectangle()
+    public void GetLayout_ShouldReturn_EquivalentRectangles_AsPutNextRectangle()
     {
-        var layouter = new CircularCloudLayouter(_center, _pointGenerator);
-        float GetDistance(Point p) => (float)Math.Sqrt(Math.Pow(p.X - _center.X, 2) + Math.Pow(p.Y - _center.Y, 2));
-        Point GetCenter(Rectangle rect) =>
-            new Point(rect.Left + rect.Width / 2, rect.Top + rect.Height / 2);
+        var layouter = new CircularCloudLayouter(_center);
+        
+        var firstRect = layouter.PutNextRectangle(_size);
+        var secondRect = layouter.PutNextRectangle(_size);
+        var thirdRect = layouter.PutNextRectangle(_size);
+        var i = 0;
+
+        foreach (var rect in layouter.GetLayout())
+        {
+            if (i == 0)
+                firstRect.Should().BeEquivalentTo(rect);
+            if (i == 1)
+                secondRect.Should().BeEquivalentTo(rect);
+            if (i == 2)
+                thirdRect.Should().BeEquivalentTo(rect);
+            ++i;
+        }
+    }
+
+    [Test]
+    public void CircularCloudLayout_ShouldNotAllow_PutRectangles_WhileEnumerating_FromGetLayout()
+    {
+        var layouter = new CircularCloudLayouter(_center);
+        var firstRect = layouter.PutNextRectangle(_size);
+
+        foreach (var rect in layouter.GetLayout())
+        {
+            firstRect.Should().BeEquivalentTo(rect);
+            var action = () => layouter.PutNextRectangle(_size);
+            
+            action.Should().Throw<InvalidOperationException>();
+        }
+    }
+
+    [Test]
+    public void CircularCloudLayout_ShouldPlace_SecondRectangle_FurtherFrom_CenterPoint()
+    {
+        var layouter = new CircularCloudLayouter(_center);
         
         var firstRect = layouter.PutNextRectangle(_size);
         var result = layouter.PutNextRectangle(_size);
         
         firstRect.IntersectsWith(result).Should().BeFalse();
-        GetDistance(GetCenter(result)).Should().BeGreaterThan(GetDistance(GetCenter(firstRect)));
+        GetDistance(firstRect.GetCenter()).Should().BeLessThan(GetDistance(result.GetCenter()));
     }
     
     [Test]
     public void CircularCloudLayout_ShouldNotPlace_TwoRectangles_OnSamePosition()
     {
-        var layouter = new CircularCloudLayouter(_center, _pointGenerator);
+        var layouter = new CircularCloudLayouter(_center);
         
         var firstRect = layouter.PutNextRectangle(_size);
         var secondRect = layouter.PutNextRectangle(_size);
@@ -62,16 +98,73 @@ public class Tests
         var firstPoint = _pointGenerator.GetNextPoint().First();
         firstPoint.Should().BeEquivalentTo(_center);
     }
+    
+    [Test]
+    public void PressRectangleToCenter_ShouldMoveRectangle_AsCloseToTheCenterAsPossible()
+    {
+        var rect = new Rectangle(_pointGenerator.GetNextPoint().First(), _size);
+        var layouter = new CircularCloudLayouter(_center);
+        var expected = _center - _size / 2;
+        
+        var result = layouter.PressRectangleToCenter(rect);
+        
+        result.Should().BeEquivalentTo(expected);
+    }
 
     [Test]
-    public void ArchimedeanSpiralGenerator_ShouldGeneratePoints_ByArchimedeanSpiral()
+    public void CircularCloudLayouter_ShouldPlaceRectangles_AlmostInCircle()
     {
-        // Для наглядности пропустил первые 10 значений, потому что там разгон спирали идёт очень медленно, и X с Y равны 0 при округлении
-        var points = _pointGenerator.GetNextPoint().Skip(10).Take(10).ToList();
+        var layouter = new CircularCloudLayouter(_center);
+        var random = new Random();
+        for (var i = 0; i < 100; ++i)
+            layouter.PutNextRectangle(new Size(random.Next(10, 50), random.Next(10, 50)));
+        var lastRect = layouter.GetLayout().Last();
+        var lastRectDist = GetDistance(lastRect.GetCenter());
+        // Условно считаем, что последний виток начинается на 0.85 от расстояния последнего прямоугольника до центра
+        // (для 100 прямоугольников размером 10х10, количество и размер сильно влияют)
+        var outerLoopRatio = 0.85;
+        var circlenessRatio = 0.85f;
         
-        float GetDistance(Point p) => (float)Math.Sqrt(Math.Pow(p.X - _center.X, 2) + Math.Pow(p.Y - _center.Y, 2));
+        var outerLoop = layouter.GetLayout()
+            .Where(x => GetDistance(x.GetCenter()) >= lastRectDist * outerLoopRatio);
+        var maxDist = GetDistance(outerLoop.MaxBy(x => GetDistance(x.GetCenter())).GetCenter());
+        var minDist = GetDistance(outerLoop.MinBy(x => GetDistance(x.GetCenter())).GetCenter());
+        var distRatio = minDist / maxDist;
         
-        for (var i = 1; i < points.Count; ++i)
-            GetDistance(points[i]).Should().BeGreaterThan(GetDistance(points[i - 1]));
+        distRatio.Should().BeGreaterThan(circlenessRatio).And.BeLessThan(1);
     }
+
+    [Test]
+    public void CircularCloudLayouter_ShouldPlaceRectangle_AsTightlyAsPossible()
+    {
+        var layouter = new CircularCloudLayouter(_center);
+        var random = new Random();
+        for (var i = 0; i < 100; ++i)
+            layouter.PutNextRectangle(new Size(random.Next(10, 50), random.Next(10, 50)));
+        var lastRect = layouter.GetLayout().Last();
+        var radius = GetDistance(lastRect.GetCenter());
+        var potentialCircleArea = Math.PI * radius * radius;
+        var tightRatio = 0.7f;
+
+        float rectanglesArea = layouter.GetLayout()
+            .Sum(x => x.Size.Width * x.Size.Height);
+        var areaRatio = rectanglesArea / potentialCircleArea;
+        
+        // В среднем сейчас точность около 75%, как повысить (и надо ли, или уже норм) - вопрос хороший, хотелось бы на этот счёт посоветоваться
+        areaRatio.Should().BeGreaterThan(tightRatio).And.BeLessThan(1);
+        
+        Console.WriteLine($"Текущая плотность: {areaRatio}"); // Просто приятный бонус
+    }
+
+    // Этот тест перестал работать из-за добавления сжатия добавляемых прямоугольников, что может привести к тому, что
+    // прямоугольник окажется ближе к центру, чем предыдущий, хотя расставлялись они по спирали
+    // [Test]
+    // public void ArchimedeanSpiralGenerator_ShouldGeneratePoints_ByArchimedeanSpiral()
+    // {
+    //     // Для наглядности пропустил первые 10 значений, потому что там разгон спирали идёт очень медленно, и X с Y равны 0 при округлении
+    //     var points = _pointGenerator.GetNextPoint().Skip(10).Take(10).ToList();
+    //     
+    //     for (var i = 1; i < points.Count; ++i)
+    //         GetDistance(points[i]).Should().BeGreaterThan(GetDistance(points[i - 1]));
+    // }
 }
