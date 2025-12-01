@@ -1,7 +1,8 @@
 ﻿using System.Drawing;
 using FluentAssertions;
-using NUnit.Framework;
 using TagsCloudVisualization;
+
+namespace TagsCloudVisualizationTests;
 
 [TestFixture]
 public class Tests
@@ -10,11 +11,12 @@ public class Tests
     private Size _size;
     private IPointGenerator _pointGenerator;
     private Func<Point, float> GetDistance;
+    private List<Rectangle> _layout;
     
     [SetUp]
     public void Setup()
     {
-        _center = new Point(0, 0);
+        _center = new Point(400, 400);
         _size = new Size(10, 10);
         var density = 1;
         _pointGenerator = new ArchimedeanSpiralPointGenerator(_center, density);
@@ -28,6 +30,7 @@ public class Tests
         var expected = new Rectangle(_center - _size / 2, _size);
 
         var result = layouter.PutNextRectangle(_size);
+        _layout = layouter.GetLayout().ToList();
         
         expected.Should().BeEquivalentTo(result);
     }
@@ -40,6 +43,7 @@ public class Tests
         var firstRect = layouter.PutNextRectangle(_size);
         var secondRect = layouter.PutNextRectangle(_size);
         var thirdRect = layouter.PutNextRectangle(_size);
+        _layout = layouter.GetLayout().ToList();
         var i = 0;
 
         foreach (var rect in layouter.GetLayout())
@@ -59,6 +63,7 @@ public class Tests
     {
         var layouter = new CircularCloudLayouter(_center);
         var firstRect = layouter.PutNextRectangle(_size);
+        _layout = layouter.GetLayout().ToList();
 
         foreach (var rect in layouter.GetLayout())
         {
@@ -76,6 +81,7 @@ public class Tests
         
         var firstRect = layouter.PutNextRectangle(_size);
         var result = layouter.PutNextRectangle(_size);
+        _layout = layouter.GetLayout().ToList();
         
         firstRect.IntersectsWith(result).Should().BeFalse();
         GetDistance(firstRect.GetCenter()).Should().BeLessThan(GetDistance(result.GetCenter()));
@@ -88,6 +94,7 @@ public class Tests
         
         var firstRect = layouter.PutNextRectangle(_size);
         var secondRect = layouter.PutNextRectangle(_size);
+        _layout = layouter.GetLayout().ToList();
         
         secondRect.IntersectsWith(firstRect).Should().BeFalse();
     }
@@ -96,6 +103,7 @@ public class Tests
     public void ArchimedeanSpiralGenerator_ShouldStartFromCenter()
     {
         var firstPoint = _pointGenerator.GetNextPoint().First();
+        _layout = new List<Rectangle> { new(firstPoint, _size) };
         firstPoint.Should().BeEquivalentTo(_center);
     }
     
@@ -107,6 +115,7 @@ public class Tests
         var expected = _center - _size / 2;
         
         var result = layouter.PressRectangleToCenter(rect);
+        _layout = layouter.GetLayout().ToList();
         
         result.Should().BeEquivalentTo(expected);
     }
@@ -124,6 +133,7 @@ public class Tests
         // (для 100 прямоугольников размером 10х10, количество и размер сильно влияют)
         var outerLoopRatio = 0.85;
         var circlenessRatio = 0.85f;
+        _layout = layouter.GetLayout().ToList();
         
         var outerLoop = layouter.GetLayout()
             .Where(x => GetDistance(x.GetCenter()) >= lastRectDist * outerLoopRatio);
@@ -145,6 +155,7 @@ public class Tests
         var radius = GetDistance(lastRect.GetCenter());
         var potentialCircleArea = Math.PI * radius * radius;
         var tightRatio = 0.7f;
+        _layout = layouter.GetLayout().ToList();
 
         float rectanglesArea = layouter.GetLayout()
             .Sum(x => x.Size.Width * x.Size.Height);
@@ -156,15 +167,31 @@ public class Tests
         Console.WriteLine($"Текущая плотность: {areaRatio}"); // Просто приятный бонус
     }
 
-    // Этот тест перестал работать из-за добавления сжатия добавляемых прямоугольников, что может привести к тому, что
-    // прямоугольник окажется ближе к центру, чем предыдущий, хотя расставлялись они по спирали
-    // [Test]
-    // public void ArchimedeanSpiralGenerator_ShouldGeneratePoints_ByArchimedeanSpiral()
-    // {
-    //     // Для наглядности пропустил первые 10 значений, потому что там разгон спирали идёт очень медленно, и X с Y равны 0 при округлении
-    //     var points = _pointGenerator.GetNextPoint().Skip(10).Take(10).ToList();
-    //     
-    //     for (var i = 1; i < points.Count; ++i)
-    //         GetDistance(points[i]).Should().BeGreaterThan(GetDistance(points[i - 1]));
-    // }
+    // Этот тест перестал работать из-за уменьшения шага в генераторе спирали, так что теперь точки ближе => прямоугольники
+    // не влезают так, как раньше
+    [Test]
+    public void ArchimedeanSpiralGenerator_ShouldGeneratePoints_ByArchimedeanSpiral()
+    {
+        // Для наглядности пропустил побольше значений, чтобы было более наглядно видно на .bmp упавшего теста
+        var points = _pointGenerator.GetNextPoint().Skip(10000).Take(100).ToList();
+        _layout = new List<Rectangle>();
+        foreach (var point in points)
+            _layout.Add(new Rectangle(point, new Size(5, 5)));
+        
+        for (var i = 1; i < points.Count; ++i)
+            GetDistance(points[i]).Should().BeGreaterThan(GetDistance(points[i - 1]));
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        var testOutcome = TestContext.CurrentContext.Result.Outcome.Status;
+        if (testOutcome == NUnit.Framework.Interfaces.TestStatus.Failed)
+        {
+            var layout = _layout;
+            var path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"{TestContext.CurrentContext.Test.Name}_failed.bmp");
+            TagsCloudVisualizationApp.CloudVisualizer.DrawRectangles(layout, _center, path);
+            Console.WriteLine($"Tag cloud visualization saved to file {path}");
+        }
+    }
 }

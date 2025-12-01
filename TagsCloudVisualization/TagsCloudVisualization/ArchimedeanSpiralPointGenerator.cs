@@ -2,7 +2,7 @@ using System.Drawing;
 
 namespace TagsCloudVisualization;
 
-public class ArchimedeanSpiralPointGenerator(Point start, float density) : IPointGenerator
+internal class ArchimedeanSpiralPointGenerator(Point start, float density) : IPointGenerator
 {
     private Point _start = start;
     private float _step = 0f;

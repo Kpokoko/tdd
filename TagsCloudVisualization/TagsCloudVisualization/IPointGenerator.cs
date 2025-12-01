@@ -2,7 +2,7 @@ using System.Drawing;
 
 namespace TagsCloudVisualization;
 
-public interface IPointGenerator
+internal interface IPointGenerator
 {
     public IEnumerable<Point> GetNextPoint();
 }

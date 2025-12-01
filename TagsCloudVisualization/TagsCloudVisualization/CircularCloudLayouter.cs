@@ -1,5 +1,7 @@
 using System.Drawing;
+using System.Runtime.CompilerServices;
 
+[assembly: InternalsVisibleTo("TagsCloudVisualizationTests")]
 namespace TagsCloudVisualization;
 
 public class CircularCloudLayouter
@@ -41,7 +43,7 @@ public class CircularCloudLayouter
         throw new Exception("No more space available");
     }
 
-    public Point PressRectangleToCenter(Rectangle rectangle)
+    internal Point PressRectangleToCenter(Rectangle rectangle)
     {
         var rectPos = rectangle.Location;
         while (true)
