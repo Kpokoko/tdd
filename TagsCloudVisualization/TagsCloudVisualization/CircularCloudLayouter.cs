@@ -4,13 +4,12 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("TagsCloudVisualizationTests")]
 namespace TagsCloudVisualization;
 
-public class CircularCloudLayouter
+public class CircularCloudLayouter : ILayouter
 {
     private readonly List<Rectangle> _prevRectangles;
     private readonly IPointGenerator _pointGenerator;
     private const int Density = 1;
     private Point _center;
-    private bool isEnumerating;
     public CircularCloudLayouter(Point center)
     {
         _pointGenerator = new ArchimedeanSpiralPointGenerator(center, Density);
@@ -20,21 +19,16 @@ public class CircularCloudLayouter
 
     public IEnumerable<Rectangle> GetLayout()
     {
-        isEnumerating = true;
         foreach (var rectangle in _prevRectangles)
             yield return rectangle;
-        isEnumerating = false;
     }
 
     public Rectangle PutNextRectangle(Size rectangleSize)
     {
-        if (isEnumerating)
-            throw new InvalidOperationException("Can't put next rectangle while enumeration is running");
         foreach (var nextRectangleCenter in _pointGenerator.GetNextPoint())
         {
             var nextRectanglePos = nextRectangleCenter - rectangleSize / 2;
-            var nextRect = new Rectangle(Point.Round(nextRectanglePos), rectangleSize);
-            if (_prevRectangles.Any(x => x.IntersectsWith(nextRect)))
+            if (CheckNextRectIntersection(nextRectanglePos, rectangleSize, out var nextRect))
                 continue;
             var pressedNextRect = new Rectangle(PressRectangleToCenter(nextRect), rectangleSize);
             _prevRectangles.Add(pressedNextRect);
@@ -55,10 +49,21 @@ public class CircularCloudLayouter
             if (direction == Point.Empty)
                 return rectPos;
             var nextPos = rectPos.Add(direction);
-            var nextRect = new Rectangle(nextPos, rectangle.Size);
-            if (_prevRectangles.Any(x => x.IntersectsWith(nextRect)))
+            if (CheckNextRectIntersection(nextPos, rectangle.Size, out _))
                 return rectPos;
             rectPos = nextPos;
         }
+    }
+
+    private bool CheckNextRectIntersection(Point nextPos, Size size, out Rectangle nextRect)
+    {
+        var possibleNextRect = new Rectangle(nextPos, size);
+        if (_prevRectangles.Any(x => x.IntersectsWith(possibleNextRect)))
+        {
+            nextRect = Rectangle.Empty;
+            return true;
+        }
+        nextRect = possibleNextRect;
+        return false;
     }
 }

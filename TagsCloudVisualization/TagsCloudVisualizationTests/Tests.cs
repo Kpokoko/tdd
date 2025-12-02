@@ -16,8 +16,8 @@ public class Tests
     [SetUp]
     public void Setup()
     {
-        _center = new Point(400, 400);
-        _size = new Size(10, 10);
+        _center = new Point(GenerationConstants.CenterX, GenerationConstants.CenterY);
+        _size = new Size(GenerationConstants.DefaultRectWidth, GenerationConstants.DefaultRectHeight);
         var density = 1;
         _pointGenerator = new ArchimedeanSpiralPointGenerator(_center, density);
         GetDistance = p => (float)Math.Sqrt(Math.Pow(p.X - _center.X, 2) + Math.Pow(p.Y - _center.Y, 2));
@@ -55,22 +55,6 @@ public class Tests
             if (i == 2)
                 thirdRect.Should().BeEquivalentTo(rect);
             ++i;
-        }
-    }
-
-    [Test]
-    public void CircularCloudLayout_ShouldNotAllow_PutRectangles_WhileEnumerating_FromGetLayout()
-    {
-        var layouter = new CircularCloudLayouter(_center);
-        var firstRect = layouter.PutNextRectangle(_size);
-        _layout = layouter.GetLayout().ToList();
-
-        foreach (var rect in layouter.GetLayout())
-        {
-            firstRect.Should().BeEquivalentTo(rect);
-            var action = () => layouter.PutNextRectangle(_size);
-            
-            action.Should().Throw<InvalidOperationException>();
         }
     }
 
@@ -125,8 +109,10 @@ public class Tests
     {
         var layouter = new CircularCloudLayouter(_center);
         var random = new Random();
-        for (var i = 0; i < 100; ++i)
-            layouter.PutNextRectangle(new Size(random.Next(10, 50), random.Next(10, 50)));
+        for (var i = 0; i < GenerationConstants.DefaultRectNumber; ++i)
+            layouter.PutNextRectangle(new Size(
+                random.Next(GenerationConstants.DefaultRectWidth, GenerationConstants.DefaultRectHeight),
+                random.Next(GenerationConstants.DefaultRectWidth, GenerationConstants.DefaultRectHeight)));
         var lastRect = layouter.GetLayout().Last();
         var lastRectDist = GetDistance(lastRect.GetCenter());
         // Условно считаем, что последний виток начинается на 0.85 от расстояния последнего прямоугольника до центра
@@ -149,8 +135,10 @@ public class Tests
     {
         var layouter = new CircularCloudLayouter(_center);
         var random = new Random();
-        for (var i = 0; i < 100; ++i)
-            layouter.PutNextRectangle(new Size(random.Next(10, 50), random.Next(10, 50)));
+        for (var i = 0; i < GenerationConstants.DefaultRectNumber; ++i)
+            layouter.PutNextRectangle(new Size(
+                random.Next(GenerationConstants.DefaultRectWidth, GenerationConstants.DefaultRectHeight),
+                random.Next(GenerationConstants.DefaultRectWidth, GenerationConstants.DefaultRectHeight)));
         var lastRect = layouter.GetLayout().Last();
         var radius = GetDistance(lastRect.GetCenter());
         var potentialCircleArea = Math.PI * radius * radius;
@@ -161,14 +149,13 @@ public class Tests
             .Sum(x => x.Size.Width * x.Size.Height);
         var areaRatio = rectanglesArea / potentialCircleArea;
         
-        // В среднем сейчас точность около 75%, как повысить (и надо ли, или уже норм) - вопрос хороший, хотелось бы на этот счёт посоветоваться
         areaRatio.Should().BeGreaterThan(tightRatio).And.BeLessThan(1);
         
         Console.WriteLine($"Текущая плотность: {areaRatio}"); // Просто приятный бонус
     }
 
     // Этот тест перестал работать из-за уменьшения шага в генераторе спирали, так что теперь точки ближе => прямоугольники
-    // не влезают так, как раньше
+    // не влезают так, как раньше, оставляю для демонстрации отрисовки раскладки на упавших тестах
     [Test]
     public void ArchimedeanSpiralGenerator_ShouldGeneratePoints_ByArchimedeanSpiral()
     {
